@@ -413,6 +413,7 @@ def main():
             if input("Do one more rollout? (y/n) ").lower().strip() != "y":
                 break
     finally:
+        client.close()
         exterior_cam.stop()
         wrist_cam.stop()
 

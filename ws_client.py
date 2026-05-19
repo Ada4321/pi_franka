@@ -92,3 +92,47 @@ class WebsocketClientPolicy:
 
     def reset(self) -> None:
         pass
+
+    def close(self) -> None:
+        """Gracefully close the websocket and drain pending asyncio tasks.
+
+        Without this, Py3.7 prints
+          "Task was destroyed but it is pending!"
+          "RuntimeError: Event loop is closed"
+        at interpreter shutdown because the websockets library leaves
+        `transfer_data` / `keepalive_ping` tasks running on the loop.
+        """
+        loop = getattr(self, "_loop", None)
+        if loop is None or loop.is_closed():
+            return
+        ws = getattr(self, "_ws", None)
+        if ws is not None:
+            try:
+                loop.run_until_complete(ws.close())
+            except Exception:
+                pass
+            self._ws = None
+        try:
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for t in pending:
+                t.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        except Exception:
+            pass
+        try:
+            loop.close()
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
