@@ -41,7 +41,10 @@ import numpy as np
 import pyrealsense2 as rs
 import rospy
 
-from openpi_client import image_tools, websocket_client_policy
+from openpi_client import image_tools
+# Local Py3.7-compatible shim; openpi_client.websocket_client_policy requires
+# websockets>=12 which needs Python>=3.8.
+from ws_client import WebsocketClientPolicy
 
 from frankapy import FrankaArm, SensorDataMessageType
 from frankapy import FrankaConstants as FC
@@ -370,7 +373,7 @@ def main():
     exterior_cam = RealsenseStream(args.exterior_serial)
     wrist_cam = RealsenseStream(args.wrist_serial)
     print(f"Connecting to policy server {args.remote_host}:{args.remote_port}...")
-    client = websocket_client_policy.WebsocketClientPolicy(args.remote_host, args.remote_port)
+    client = WebsocketClientPolicy(args.remote_host, args.remote_port)
 
     try:
         while True:
