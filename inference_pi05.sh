@@ -19,8 +19,8 @@ source "$CONDA_BASE/etc/profile.d/conda.sh"
 # Use the same env you normally run frankapy from.
 conda activate franka
 
-EXTERIOR_SERIAL="${EXTERIOR_SERIAL:-<fill-me>}"
-WRIST_SERIAL="${WRIST_SERIAL:-<fill-me>}"
+EXTERIOR_SERIAL="${EXTERIOR_SERIAL:-838212071165}"   # D435  (head)
+WRIST_SERIAL="${WRIST_SERIAL:-040322071615}"         # D435i (wrist)
 REMOTE_HOST="${REMOTE_HOST:-0.0.0.0}"
 REMOTE_PORT="${REMOTE_PORT:-8000}"
 

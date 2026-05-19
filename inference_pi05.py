@@ -25,9 +25,15 @@ Hardware:
   - Franka via frankapy; dynamic joint streaming a la
     `frankapy/examples/run_dynamic_joints.py`.
 
-Run from a python env that has rospy + frankapy + pyrealsense2 + openpi-client.
-If openpi_client is missing, install from this machine:
-  pip install -e /home/hez2/code/openpi/packages/openpi-client
+Image preprocessing matches the sim2real intrinsics alignment:
+  D435 640x480  -> center crop to 480x480  -> bilinear resize to 224x224.
+This makes the per-pixel fx/fy of the policy input identical to what the sim
+rendered at 256x256 (with horizontal_aperture chosen accordingly in
+conf/env/sim2real.yaml).
+
+Run from a python env that has rospy + frankapy + pyrealsense2 + msgpack/
+websockets/numpy/pillow (openpi_client is only used for msgpack_numpy here;
+the websocket client is a local Py3.7-compatible shim in ws_client.py).
 """
 
 from __future__ import annotations  # keep `list[X] | None` etc. valid on Py3.7
@@ -41,7 +47,7 @@ import numpy as np
 import pyrealsense2 as rs
 import rospy
 
-from openpi_client import image_tools
+from PIL import Image
 # Local Py3.7-compatible shim; openpi_client.websocket_client_policy requires
 # websockets>=12 which needs Python>=3.8.
 from ws_client import WebsocketClientPolicy
@@ -236,6 +242,23 @@ def prevent_keyboard_interrupt():
             raise KeyboardInterrupt
 
 
+def _center_crop_resize(img: np.ndarray, out_size: int = 224) -> np.ndarray:
+    """640x480 -> center crop to min(H, W) square -> bilinear resize to
+    (out_size, out_size).
+
+    Matches the sim2real intrinsics alignment in
+    `conf/env/sim2real.yaml` (head/wrist horizontal_aperture chosen so that
+    sim 256x256 fx/fy equals real D435 fx/fy after exactly this preprocessing
+    on a 640x480 capture).
+    """
+    h, w = img.shape[:2]
+    s = min(h, w)
+    top = (h - s) // 2
+    left = (w - s) // 2
+    sq = img[top:top + s, left:left + s]
+    return np.array(Image.fromarray(sq).resize((out_size, out_size), Image.BILINEAR))
+
+
 def _compute_gains(k_scale: float, damping_ratio: float) -> tuple[list[float], list[float]]:
     """Scale frankapy's DEFAULT_K_GAINS and recompute d = 2*sqrt(k)*damping_ratio.
 
@@ -292,9 +315,16 @@ def rollout(args, fa, exterior_cam, wrist_cam, client):
             # ---- observations --------------------------------------------------
             ext_rgb = exterior_cam.get_rgb()
             wrist_rgb = wrist_cam.get_rgb()
-            ext_224 = image_tools.resize_with_pad(ext_rgb, 224, 224)
-            wrist_224 = image_tools.resize_with_pad(wrist_rgb, 224, 224)
+            ext_224 = _center_crop_resize(ext_rgb)
+            wrist_224 = _center_crop_resize(wrist_rgb)
             state = build_state(fa)
+
+            if args.debug_snapshot and t == 0:
+                Image.fromarray(ext_rgb).save("/tmp/debug_ext_raw.png")
+                Image.fromarray(ext_224).save("/tmp/debug_ext_224.png")
+                Image.fromarray(wrist_rgb).save("/tmp/debug_wrist_raw.png")
+                Image.fromarray(wrist_224).save("/tmp/debug_wrist_224.png")
+                print("[debug] first-frame snapshots saved to /tmp/debug_{ext,wrist}_{raw,224}.png")
 
             # ---- query server if chunk exhausted -------------------------------
             if pred_chunk is None or chunk_idx >= args.chunk_steps:
@@ -365,6 +395,8 @@ def main():
     ap.add_argument("--damping-ratio", type=float, default=1.0,
                     help="d_gains = 2*sqrt(k_gains)*ratio (1.0=critical, <1=underdamped/snappier, >1=overdamped)")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--debug-snapshot", action="store_true",
+                    help="dump first-frame raw + 224x224 images of both cameras to /tmp")
     args = ap.parse_args()
 
     print("Connecting to Franka...")
