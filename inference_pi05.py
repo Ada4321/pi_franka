@@ -30,6 +30,8 @@ If openpi_client is missing, install from this machine:
   pip install -e /home/hez2/code/openpi/packages/openpi-client
 """
 
+from __future__ import annotations  # keep `list[X] | None` etc. valid on Py3.7
+
 import argparse
 import contextlib
 import signal
