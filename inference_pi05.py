@@ -273,7 +273,11 @@ def _compute_gains(k_scale: float, damping_ratio: float) -> tuple[list[float], l
 
 def build_state(fa: FrankaArm) -> np.ndarray:
     joints = np.asarray(fa.get_joints(), dtype=np.float32)  # (7,)
-    width = float(fa.get_gripper_width())                   # scalar, meters
+    # frankapy `get_gripper_width()` returns TOTAL distance between fingers
+    # ([0, 0.08] m). Training `state[:, 7]` was taken from IsaacLab
+    # `state/gripper_pos[0]` (PER-FINGER, [0, 0.04] m), so we divide by 2 to
+    # match the policy's expected units.
+    width = float(fa.get_gripper_width()) / 2.0
     return np.concatenate([joints, np.array([width], dtype=np.float32)])  # (8,)
 
 
@@ -282,9 +286,12 @@ def build_state(fa: FrankaArm) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+RESET_JOINTS = [0.3463, -0.0387, -0.3453, -2.3377, -0.0176, 2.3012, 0.7983]
+
+
 def rollout(args, fa, exterior_cam, wrist_cam, client):
     print(f"\n=== New rollout. Resetting arm. ===")
-    fa.reset_joints()
+    fa.goto_joints(RESET_JOINTS, ignore_virtual_walls=False)
     gripper = GripperController(fa, deadband_m=args.gripper_deadband)
     gripper.reset_open()
 
