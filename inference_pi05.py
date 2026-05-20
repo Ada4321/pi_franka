@@ -358,6 +358,30 @@ def rollout(args, fa, exterior_cam, wrist_cam, client):
             joint_target = np.asarray(action[:7], dtype=np.float64)
             gripper_target = float(action[7])
 
+            # ---- per-step joint delta clip ------------------------------------
+            # Cap how far each commanded joint can be from the current measured
+            # joint position. Bounds robot speed at max_delta * control_hz rad/s
+            # and damps "aggressive" overshoot when the policy outputs joint
+            # targets far from the current state.
+            current_joints = np.asarray(state[:7], dtype=np.float64)
+            raw_delta = joint_target - current_joints
+            joint_target = np.clip(
+                joint_target,
+                current_joints - args.joint_max_delta,
+                current_joints + args.joint_max_delta,
+            )
+
+            if args.verbose:
+                clipped_delta = joint_target - current_joints
+                max_raw = float(np.abs(raw_delta).max())
+                max_clip = float(np.abs(clipped_delta).max())
+                clip_tag = " [CLIPPED]" if max_clip < max_raw - 1e-9 else ""
+                print(
+                    f"  t={t} raw_delta_max={max_raw:.4f} "
+                    f"cmd_delta_max={max_clip:.4f}{clip_tag} "
+                    f"g_target={gripper_target:.3f} g_cur={float(state[7]):.3f}"
+                )
+
             # ---- execute -------------------------------------------------------
             streamer.send(joint_target)
             gripper.step(target_m=gripper_target, current_m=float(state[7]))
@@ -397,6 +421,9 @@ def main():
     ap.add_argument("--control-hz", type=float, default=10.0)
     ap.add_argument("--gripper-deadband", type=float, default=0.001,
                     help="sign-based gripper binarization: |target - current| below this holds last cmd")
+    ap.add_argument("--joint-max-delta", type=float, default=0.05,
+                    help="per-step cap on |commanded - current| joint angle (rad). "
+                         "At 10 Hz: 0.05 -> ~0.5 rad/s ceiling. Smaller=safer/slower, larger=closer to policy intent")
     ap.add_argument("--k-scale", type=float, default=2.0,
                     help="multiplier on frankapy DEFAULT_K_GAINS (1.0=soft default, 2.0=recommended, 3+=stiff)")
     ap.add_argument("--damping-ratio", type=float, default=1.0,
