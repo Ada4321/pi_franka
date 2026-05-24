@@ -1,0 +1,28 @@
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual envs
+venv/
+env/
+.venv/
+
+# Build artifacts
+build/
+dist/
+
+# OS / editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Local data (videos, chunk dumps) — not part of the codebase
+recordings/
